@@ -1,10 +1,17 @@
 'use client';
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import Link from 'next/link';
 import { PillBtn } from '../shared';
 import { useCart } from '@/context/CartContext';
+import { useAuth } from '@/context/AuthContext';
+import { api } from '@/lib/api';
+import type { OrderResponse } from '@/lib/types';
 
 type Step = 'address'|'payment'|'confirm'|'done';
+type PayMethod = 'pix'|'card'|'boleto';
+
+const STATES = ['SP','RJ','MG','PR','RS','SC','BA','GO','DF','CE','PE','AM','PA'];
 
 const slideVariants = {
   enter: (dir: number) => ({ x: dir > 0 ? 80 : -80, opacity: 0 }),
@@ -13,26 +20,84 @@ const slideVariants = {
 };
 
 export default function CheckoutView() {
-  const { items, total } = useCart();
+  const { items, total, clearCart } = useCart();
+  const { user } = useAuth();
   const [step, setStep] = useState<Step>('address');
   const [dir, setDir] = useState(1);
   const [coupon, setCoupon] = useState('');
   const [discount, setDiscount] = useState(0);
-  const [payMethod, setPayMethod] = useState<'gpay'|'pix'|'card'|'boleto'>('gpay');
+  const [payMethod, setPayMethod] = useState<PayMethod>('pix');
+  const [addr, setAddr] = useState({ zipCode:'', street:'', number:'', complement:'', neighborhood:'', city:'', state:'SP' });
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const [orderId, setOrderId] = useState('');
+  const [cepLoading, setCepLoading] = useState(false);
 
   const frete = total >= 149 ? 0 : 18;
   const totalFinal = total + frete - discount;
-
   const go = (next: Step, direction = 1) => { setDir(direction); setStep(next); };
 
   const applyCoupon = () => {
     if (coupon.trim().toUpperCase() === 'VELUDO10') setDiscount(+(total * 0.1).toFixed(2));
   };
 
+  const lookupCEP = async (cep: string) => {
+    const clean = cep.replace(/\D/g, '');
+    if (clean.length !== 8) return;
+    setCepLoading(true);
+    try {
+      const data = await fetch(`https://viacep.com.br/ws/${clean}/json/`).then(r => r.json());
+      if (!data.erro) setAddr(a => ({ ...a, street: data.logradouro ?? a.street, neighborhood: data.bairro ?? a.neighborhood, city: data.localidade ?? a.city, state: data.uf ?? a.state }));
+    } catch { /* ignore network error */ }
+    setCepLoading(false);
+  };
+
+  const submitOrder = async () => {
+    setSubmitError('');
+    setSubmitting(true);
+    try {
+      const order = await api.post<OrderResponse>('/orders', {
+        items: items.map(i => ({ productId: i.product.id, quantity: i.qty })),
+        shippingAddress: {
+          zipCode: addr.zipCode.replace(/\D/g, ''),
+          street: addr.street, number: addr.number,
+          complement: addr.complement || undefined,
+          neighborhood: addr.neighborhood, city: addr.city,
+          state: addr.state, country: 'BR',
+        },
+        paymentMethod: payMethod === 'pix' ? 'PIX' : payMethod === 'card' ? 'CREDIT_CARD' : 'BOLETO',
+        paymentProvider: 'mercadopago',
+        couponCode: coupon.trim().toUpperCase() || undefined,
+      });
+      setOrderId(order.id);
+      clearCart();
+      go('done');
+    } catch (err: any) {
+      setSubmitError(err.message ?? 'Erro ao criar pedido. Tente novamente.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const steps: Step[] = ['address','payment','confirm','done'];
   const stepIdx = steps.indexOf(step);
-
   const stepLabels = { address:'Endereço', payment:'Pagamento', confirm:'Revisão', done:'✓ Pedido' };
+  const inputCls = 'w-full px-4 py-3 rounded-[20px] border border-[#2a1612]/20 focus:border-[#ed6058] outline-none text-sm bg-white';
+
+  // Auth guard
+  if (!user) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center px-4">
+        <div className="text-center max-w-sm">
+          <div className="text-5xl mb-4">🔒</div>
+          <h2 className="font-['Bagel_Fat_One',cursive] text-2xl text-[#2a1612] mb-2">Faça login para continuar</h2>
+          <p className="text-[#2a1612]/60 text-sm mb-6">Você precisa estar logado para finalizar a compra.</p>
+          <Link href="/login?callbackUrl=/checkout"><PillBtn size="lg">Entrar →</PillBtn></Link>
+          <p className="mt-3 text-sm text-[#2a1612]/50">Não tem conta? <Link href="/cadastro" className="text-[#ed6058] font-medium hover:underline">Cadastrar-se</Link></p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="px-4 md:px-8 py-10 max-w-5xl mx-auto">
@@ -64,60 +129,57 @@ export default function CheckoutView() {
                 <div className="space-y-4">
                   <h2 className="font-sans font-bold text-xl text-[#2a1612]">Endereço de entrega</h2>
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="col-span-2">
-                      <label className="text-xs font-semibold text-[#2a1612]/60 uppercase tracking-wide block mb-1.5">Nome completo</label>
-                      <input className="w-full px-4 py-3 rounded-[20px] border border-[#2a1612]/20 focus:border-[#ed6058] outline-none text-sm bg-white" placeholder="Maria Souza"/>
-                    </div>
                     <div>
-                      <label className="text-xs font-semibold text-[#2a1612]/60 uppercase tracking-wide block mb-1.5">CEP</label>
-                      <input className="w-full px-4 py-3 rounded-[20px] border border-[#2a1612]/20 focus:border-[#ed6058] outline-none text-sm bg-white" placeholder="00000-000"/>
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold text-[#2a1612]/60 uppercase tracking-wide block mb-1.5">Telefone</label>
-                      <input className="w-full px-4 py-3 rounded-[20px] border border-[#2a1612]/20 focus:border-[#ed6058] outline-none text-sm bg-white" placeholder="(11) 99999-9999"/>
-                    </div>
-                    <div className="col-span-2">
-                      <label className="text-xs font-semibold text-[#2a1612]/60 uppercase tracking-wide block mb-1.5">Endereço</label>
-                      <input className="w-full px-4 py-3 rounded-[20px] border border-[#2a1612]/20 focus:border-[#ed6058] outline-none text-sm bg-white" placeholder="Rua, número, complemento"/>
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold text-[#2a1612]/60 uppercase tracking-wide block mb-1.5">Cidade</label>
-                      <input className="w-full px-4 py-3 rounded-[20px] border border-[#2a1612]/20 focus:border-[#ed6058] outline-none text-sm bg-white" placeholder="São Paulo"/>
+                      <label className="text-xs font-semibold text-[#2a1612]/60 uppercase tracking-wide block mb-1.5">CEP {cepLoading && <span className="text-[#ed6058]">buscando...</span>}</label>
+                      <input value={addr.zipCode} onChange={e => setAddr(a => ({...a, zipCode: e.target.value}))}
+                        onBlur={e => lookupCEP(e.target.value)}
+                        className={inputCls} placeholder="00000-000" maxLength={9}/>
                     </div>
                     <div>
                       <label className="text-xs font-semibold text-[#2a1612]/60 uppercase tracking-wide block mb-1.5">Estado</label>
-                      <select className="w-full px-4 py-3 rounded-[20px] border border-[#2a1612]/20 focus:border-[#ed6058] outline-none text-sm bg-white">
-                        {['SP','RJ','MG','PR','RS','SC','BA','GO','DF','CE','PE','AM','PA'].map(s => <option key={s}>{s}</option>)}
+                      <select value={addr.state} onChange={e => setAddr(a => ({...a, state: e.target.value}))}
+                        className={inputCls}>
+                        {STATES.map(s => <option key={s}>{s}</option>)}
                       </select>
                     </div>
+                    <div className="col-span-2">
+                      <label className="text-xs font-semibold text-[#2a1612]/60 uppercase tracking-wide block mb-1.5">Rua / Logradouro</label>
+                      <input value={addr.street} onChange={e => setAddr(a => ({...a, street: e.target.value}))}
+                        className={inputCls} placeholder="Rua das Flores" required/>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-[#2a1612]/60 uppercase tracking-wide block mb-1.5">Número</label>
+                      <input value={addr.number} onChange={e => setAddr(a => ({...a, number: e.target.value}))}
+                        className={inputCls} placeholder="123"/>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-[#2a1612]/60 uppercase tracking-wide block mb-1.5">Complemento</label>
+                      <input value={addr.complement} onChange={e => setAddr(a => ({...a, complement: e.target.value}))}
+                        className={inputCls} placeholder="Apto 4B (opcional)"/>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-[#2a1612]/60 uppercase tracking-wide block mb-1.5">Bairro</label>
+                      <input value={addr.neighborhood} onChange={e => setAddr(a => ({...a, neighborhood: e.target.value}))}
+                        className={inputCls} placeholder="Vila Madalena"/>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-[#2a1612]/60 uppercase tracking-wide block mb-1.5">Cidade</label>
+                      <input value={addr.city} onChange={e => setAddr(a => ({...a, city: e.target.value}))}
+                        className={inputCls} placeholder="São Paulo"/>
+                    </div>
                   </div>
-                  <PillBtn size="lg" onClick={() => go('payment')}>Continuar para pagamento →</PillBtn>
+                  <PillBtn size="lg" onClick={() => go('payment')} disabled={!addr.street || !addr.number || !addr.city || !addr.zipCode}>
+                    Continuar para pagamento →
+                  </PillBtn>
                 </div>
               )}
 
               {step === 'payment' && (
                 <div className="space-y-4">
                   <h2 className="font-sans font-bold text-xl text-[#2a1612]">Forma de pagamento</h2>
-
-                  {/* Google Pay button (mock) */}
-                  <button
-                    onClick={() => setPayMethod('gpay')}
-                    className={`w-full flex items-center justify-center gap-3 p-4 rounded-[20px] border-2 transition font-semibold ${payMethod==='gpay' ? 'border-[#ed6058] bg-[#ed6058]/5' : 'border-[#2a1612]/20 hover:border-[#2a1612]/40'}`}
-                  >
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                      <rect width="24" height="24" rx="4" fill="white"/>
-                      <text x="3" y="17" fontSize="11" fontWeight="bold" fill="#4285F4">G</text>
-                      <text x="11" y="17" fontSize="11" fontWeight="bold" fill="#EA4335">P</text>
-                      <text x="17" y="17" fontSize="11" fontWeight="bold" fill="#FBBC05">a</text>
-                      <text x="21" y="17" fontSize="11" fontWeight="bold" fill="#34A853">y</text>
-                    </svg>
-                    <span>Google Pay</span>
-                    {payMethod === 'gpay' && <span className="ml-auto text-xs bg-[#ed6058] text-white px-2 py-0.5 rounded-full">Recomendado</span>}
-                  </button>
-
                   <div className="grid grid-cols-3 gap-3">
                     {([['pix','⚡','Pix','5% OFF'],['card','💳','Cartão',''],['boleto','📄','Boleto','']] as const).map(([m, icon, label, tag]) => (
-                      <button key={m} onClick={() => setPayMethod(m as typeof payMethod)}
+                      <button key={m} onClick={() => setPayMethod(m)}
                         className={`p-4 rounded-[20px] border-2 text-center transition ${payMethod===m ? 'border-[#ed6058] bg-[#ed6058]/5' : 'border-[#2a1612]/20 hover:border-[#2a1612]/40'}`}>
                         <div className="text-2xl mb-1">{icon}</div>
                         <div className="text-sm font-medium">{label}</div>
@@ -125,35 +187,26 @@ export default function CheckoutView() {
                       </button>
                     ))}
                   </div>
-
-                  {payMethod === 'gpay' && (
-                    <motion.div initial={{ opacity:0, height:0 }} animate={{ opacity:1, height:'auto' }} className="bg-[#fdfedf] rounded-[20px] p-4 text-sm text-[#2a1612]/70">
-                      <p>🔒 Pagamento processado pelo Google Pay. Seus dados de cartão nunca passam pelo nosso servidor.</p>
-                    </motion.div>
-                  )}
-
                   {payMethod === 'pix' && (
-                    <motion.div initial={{ opacity:0, height:0 }} animate={{ opacity:1, height:'auto' }} className="bg-[#fdfedf] rounded-[20px] p-4 text-sm text-[#2a1612]/70">
-                      <p>⚡ O QR Code Pix será gerado na próxima etapa. Pagamento confirmado em segundos. <strong className="text-green-600">+5% de desconto aplicado!</strong></p>
+                    <motion.div initial={{ opacity:0 }} animate={{ opacity:1 }} className="bg-[#fdfedf] rounded-[20px] p-4 text-sm text-[#2a1612]/70">
+                      <p>⚡ O QR Code Pix será gerado após a confirmação do pedido. Válido por 30 minutos.</p>
                     </motion.div>
                   )}
-
                   {payMethod === 'card' && (
                     <motion.div initial={{ opacity:0 }} animate={{ opacity:1 }} className="space-y-3">
-                      <input className="w-full px-4 py-3 rounded-[20px] border border-[#2a1612]/20 focus:border-[#ed6058] outline-none text-sm bg-white" placeholder="Número do cartão"/>
+                      <input className={inputCls} placeholder="Número do cartão"/>
                       <div className="grid grid-cols-2 gap-3">
-                        <input className="px-4 py-3 rounded-[20px] border border-[#2a1612]/20 focus:border-[#ed6058] outline-none text-sm bg-white" placeholder="MM/AA"/>
-                        <input className="px-4 py-3 rounded-[20px] border border-[#2a1612]/20 focus:border-[#ed6058] outline-none text-sm bg-white" placeholder="CVV"/>
+                        <input className={inputCls} placeholder="MM/AA"/>
+                        <input className={inputCls} placeholder="CVV"/>
                       </div>
-                      <input className="w-full px-4 py-3 rounded-[20px] border border-[#2a1612]/20 focus:border-[#ed6058] outline-none text-sm bg-white" placeholder="Nome no cartão"/>
-                      <div className="grid grid-cols-4 gap-2 pt-1">
-                        {['1×','2×','3×','4×'].map((p, i) => (
-                          <button key={p} className={`py-2 rounded-[12px] text-sm font-medium transition ${i===0 ? 'bg-[#ed6058] text-white' : 'bg-white border border-[#2a1612]/20 hover:border-[#ed6058]'}`}>{p}</button>
-                        ))}
-                      </div>
+                      <input className={inputCls} placeholder="Nome no cartão"/>
                     </motion.div>
                   )}
-
+                  {payMethod === 'boleto' && (
+                    <motion.div initial={{ opacity:0 }} animate={{ opacity:1 }} className="bg-[#fdfedf] rounded-[20px] p-4 text-sm text-[#2a1612]/70">
+                      <p>📄 Boleto bancário com vencimento em 3 dias úteis. Enviaremos por e-mail após a confirmação.</p>
+                    </motion.div>
+                  )}
                   <div className="flex gap-3">
                     <PillBtn variant="ghost" onClick={() => go('address', -1)}>← Voltar</PillBtn>
                     <PillBtn onClick={() => go('confirm')}>Revisar pedido →</PillBtn>
@@ -176,9 +229,19 @@ export default function CheckoutView() {
                       <p className="font-bold text-[#ed6058] text-sm">R$ {(product.price*qty).toFixed(2).replace('.',',')}</p>
                     </div>
                   ))}
+                  <AnimatePresence>
+                    {submitError && (
+                      <motion.div initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }}
+                        className="bg-red-50 text-red-600 text-sm p-4 rounded-[20px]">
+                        {submitError}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                   <div className="flex gap-3">
                     <PillBtn variant="ghost" onClick={() => go('payment', -1)}>← Voltar</PillBtn>
-                    <PillBtn size="lg" onClick={() => go('done')}>Confirmar e pagar</PillBtn>
+                    <PillBtn size="lg" onClick={submitOrder} disabled={submitting}>
+                      {submitting ? 'Processando...' : 'Confirmar e pagar'}
+                    </PillBtn>
                   </div>
                 </div>
               )}
@@ -192,9 +255,13 @@ export default function CheckoutView() {
                     </svg>
                   </motion.div>
                   <h2 className="font-['Bagel_Fat_One',cursive] text-3xl text-[#2a1612] mb-3">Pedido confirmado! 🐾</h2>
-                  <p className="text-[#2a1612]/60 mb-2">Você receberá um e-mail de confirmação em instantes.</p>
+                  {orderId && <p className="text-[#2a1612]/50 text-xs mb-2">Pedido #{orderId.slice(0,8).toUpperCase()}</p>}
+                  <p className="text-[#2a1612]/60 mb-2">Você receberá as instruções de pagamento em instantes.</p>
                   <p className="text-[#2a1612]/60 mb-8">Entrega em até 72h após a confirmação do pagamento.</p>
-                  <a href="/"><PillBtn size="lg">Continuar comprando</PillBtn></a>
+                  <div className="flex gap-3 justify-center">
+                    <Link href="/perfil"><PillBtn variant="ghost">Ver meus pedidos</PillBtn></Link>
+                    <Link href="/"><PillBtn size="lg">Continuar comprando</PillBtn></Link>
+                  </div>
                 </motion.div>
               )}
             </motion.div>

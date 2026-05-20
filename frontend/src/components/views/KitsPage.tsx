@@ -1,8 +1,8 @@
 'use client';
 import { Badge, PillBtn } from '../shared';
-import type { Kit, Product } from '@/lib/types';
+import type { Kit } from '@/lib/types';
 
-export default function KitsPage({ kits }: { kits: Kit[]; products: Product[] }) {
+export default function KitsPage({ kits }: { kits: Kit[] }) {
   return (
     <div className="px-4 md:px-8 py-10 max-w-6xl mx-auto">
       <h1 className="font-['Bagel_Fat_One',cursive] text-4xl md:text-5xl text-[#2a1612] mb-3">kits pensados pra cada fase</h1>

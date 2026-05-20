@@ -4,11 +4,13 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Logo, Marquee } from './shared';
 import { useCart } from '@/context/CartContext';
+import { useAuth } from '@/context/AuthContext';
 
 export default function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const { cartCount, setCartOpen } = useCart();
+  const { user, logout } = useAuth();
 
   const nav = [
     { href: '/cat/brincar', label: 'Brincar' },
@@ -39,9 +41,20 @@ export default function Header() {
           <button onClick={() => setSearchOpen(!searchOpen)} className="p-2 rounded-full hover:bg-[#2a1612]/10 transition" aria-label="Buscar">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><line x1="20" y1="20" x2="15.5" y2="15.5"/></svg>
           </button>
-          <Link href="/perfil" className="p-2 rounded-full hover:bg-[#2a1612]/10 transition hidden sm:flex" aria-label="Conta">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 20 Q 12 14 20 20"/></svg>
-          </Link>
+          {user ? (
+            <div className="hidden sm:flex items-center gap-1">
+              <Link href="/perfil" className="px-3 py-1.5 rounded-full hover:bg-[#2a1612]/10 transition text-sm font-medium" aria-label="Conta">
+                {user.firstName}
+              </Link>
+              <button onClick={logout} className="px-3 py-1.5 rounded-full hover:bg-[#2a1612]/10 transition text-sm text-[#2a1612]/60 hover:text-[#ed6058]">
+                Sair
+              </button>
+            </div>
+          ) : (
+            <Link href="/login" className="p-2 rounded-full hover:bg-[#2a1612]/10 transition hidden sm:flex" aria-label="Conta">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 20 Q 12 14 20 20"/></svg>
+            </Link>
+          )}
           <button onClick={() => setCartOpen(true)} className="relative p-2 rounded-full hover:bg-[#2a1612]/10 transition" aria-label="Carrinho">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M5 7 L 19 7 L 17 18 L 7 18 Z"/><path d="M8 7 Q 8 3 12 3 Q 16 3 16 7"/></svg>
             <AnimatePresence>
@@ -64,8 +77,21 @@ export default function Header() {
                 <Link key={l.href} href={l.href} onClick={() => setMenuOpen(false)}
                   className="py-3 px-4 rounded-[20px] font-medium hover:bg-[#ed6058] hover:text-white transition-colors">{l.label}</Link>
               ))}
-              <Link href="/perfil" onClick={() => setMenuOpen(false)}
-                className="py-3 px-4 rounded-[20px] font-medium hover:bg-[#2a1612] hover:text-white transition-colors">Minha conta</Link>
+              {user ? (
+                <>
+                  <Link href="/perfil" onClick={() => setMenuOpen(false)}
+                    className="py-3 px-4 rounded-[20px] font-medium hover:bg-[#2a1612] hover:text-white transition-colors">
+                    Minha conta ({user.firstName})
+                  </Link>
+                  <button onClick={() => { setMenuOpen(false); logout(); }}
+                    className="py-3 px-4 rounded-[20px] font-medium text-left text-[#2a1612]/60 hover:bg-red-50 hover:text-red-500 transition-colors">
+                    Sair
+                  </button>
+                </>
+              ) : (
+                <Link href="/login" onClick={() => setMenuOpen(false)}
+                  className="py-3 px-4 rounded-[20px] font-medium hover:bg-[#2a1612] hover:text-white transition-colors">Entrar</Link>
+              )}
             </nav>
           </motion.div>
         )}

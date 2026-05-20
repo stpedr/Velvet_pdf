@@ -1,8 +1,8 @@
 'use client';
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import Link from 'next/link';
 import { PillBtn } from '../shared';
-import { PV_DATA } from '@/lib/data';
 
 const QUESTIONS = [
   { q: 'O seu gato é mais...', opts: [
@@ -40,7 +40,7 @@ export default function QuizView() {
     ? Object.entries(answers.reduce((acc, a) => ({ ...acc, [a]: (acc[a]||0)+1 }), {} as Record<string,number>))
         .sort((a,b) => b[1]-a[1])[0][0]
     : '';
-  const recommended = PV_DATA.products.filter(p => p.cat === topCat).slice(0, 3);
+  const catSlug = topCat;
 
   return (
     <div className="min-h-[70vh] px-4 md:px-8 py-16 max-w-2xl mx-auto">
@@ -67,17 +67,11 @@ export default function QuizView() {
           <motion.div key="result" initial={{ opacity:0, scale:0.95 }} animate={{ opacity:1, scale:1 }} className="text-center">
             <div className="text-6xl mb-4">🎉</div>
             <h1 className="font-['Bagel_Fat_One',cursive] text-4xl text-[#2a1612] mb-3">resultado!</h1>
-            <p className="text-[#2a1612]/60 mb-8">O seu gato vai adorar os produtos de <strong className="text-[#ed6058]">{topCat}</strong>:</p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-              {recommended.map(p => (
-                <a key={p.id} href={`/produto/${p.id}`} className="bg-white rounded-[20px] p-4 text-left hover:shadow-md transition-shadow">
-                  <div className="aspect-square rounded-xl mb-3 overflow-hidden" style={{ background: p.colorways[0] }}>
-                    {p.images?.[0] && <img src={p.images[0]} alt={p.name} className="w-full h-full object-cover"/>}
-                  </div>
-                  <p className="font-semibold text-sm text-[#2a1612]">{p.name}</p>
-                  <p className="text-[#ed6058] font-bold text-sm">R$ {p.price.toFixed(2).replace('.',',')}</p>
-                </a>
-              ))}
+            <p className="text-[#2a1612]/60 mb-8">O seu gato vai adorar os produtos de <strong className="text-[#ed6058]">{catSlug}</strong>!</p>
+            <div className="mb-8">
+              <Link href={`/cat/${catSlug}`} className="inline-block bg-[#ed6058] text-white font-semibold rounded-full px-8 py-3 hover:bg-[#d94f47] transition">
+                Ver produtos de {catSlug} →
+              </Link>
             </div>
             <PillBtn onClick={() => { setStep(0); setAnswers([]); setDone(false); }}>Refazer o quiz</PillBtn>
           </motion.div>
