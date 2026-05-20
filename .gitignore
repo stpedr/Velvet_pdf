@@ -3,6 +3,7 @@ node_modules/
 .next/
 backend/target/
 frontend/tsconfig.tsbuildinfo
+admin-frontend/tsconfig.tsbuildinfo
 frontend/next-env.d.ts
 admin-frontend/next-env.d.ts
 frontend/coverage/
